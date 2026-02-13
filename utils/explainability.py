@@ -26,6 +26,7 @@ class StyleGradCAM:
         self.encoder = encoder
         self.gradients = None
         self.activations = None
+        self._hook_handles = []
         self._register_hooks()
 
     def _register_hooks(self):
@@ -44,8 +45,14 @@ class StyleGradCAM:
             else:
                 self.gradients = grad_output.detach()
 
-        last_block.register_forward_hook(forward_hook)
-        last_block.register_full_backward_hook(backward_hook)
+        self._hook_handles.append(last_block.register_forward_hook(forward_hook))
+        self._hook_handles.append(last_block.register_full_backward_hook(backward_hook))
+
+    def remove_hooks(self):
+        """Remove registered hooks to prevent accumulation."""
+        for handle in self._hook_handles:
+            handle.remove()
+        self._hook_handles.clear()
 
     @torch.enable_grad()
     def generate(

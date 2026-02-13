@@ -361,11 +361,18 @@ def load_clip_weights(model: VisionTransformer, clip_model_name: str = "ViT-B-32
     for clip_key, clip_val in clip_state.items():
         our_key = _map_clip_key(clip_key)
         if our_key and our_key in our_state:
-            if our_state[our_key].shape == clip_val.shape:
+            target_shape = our_state[our_key].shape
+            if target_shape == clip_val.shape:
                 mapped_state[our_key] = clip_val
+            elif clip_key == "class_embedding" and clip_val.ndim == 1:
+                # (768,) → (1, 1, 768)
+                mapped_state[our_key] = clip_val.unsqueeze(0).unsqueeze(0)
+            elif clip_key == "positional_embedding" and clip_val.ndim == 2:
+                # (50, 768) → (1, 50, 768)
+                mapped_state[our_key] = clip_val.unsqueeze(0)
             else:
                 print(f"Shape mismatch: {our_key} "
-                      f"(ours: {our_state[our_key].shape}, "
+                      f"(ours: {target_shape}, "
                       f"clip: {clip_val.shape})")
 
     # Load mapped weights
@@ -404,9 +411,9 @@ def _map_clip_key(clip_key: str) -> Optional[str]:
     if key == "conv1.bias":
         return "patch_embed.projection.bias"
     if key == "class_embedding":
-        return None  # Shape differs: CLIP uses (768,), we use (1, 1, 768)
+        return "patch_embed.cls_token"  # needs reshape: (768,) → (1, 1, 768)
     if key == "positional_embedding":
-        return None  # Shape differs: CLIP uses (50, 768), we use (1, 50, 768)
+        return "patch_embed.position_embeddings"  # needs reshape: (50, 768) → (1, 50, 768)
 
     # Final layer norm and projection
     if key == "ln_post.weight":
