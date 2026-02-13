@@ -262,12 +262,12 @@ class AttributeRegressionLoss(nn.Module):
         Returns:
             weighted sum of per-attribute MSE losses
         """
-        total_loss = 0.0
+        total_loss = torch.tensor(0.0, device=next(iter(predicted.values())).device)
         for name, pred in predicted.items():
             if name in pseudo_labels:
                 weight = self.attribute_weights.get(name, 1.0)
                 target = pseudo_labels[name]
-                total_loss += weight * F.mse_loss(pred, target)
+                total_loss = total_loss + weight * F.mse_loss(pred, target)
 
         return total_loss
 

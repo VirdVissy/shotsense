@@ -37,7 +37,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple
 
-from .vit import VisionTransformer, create_vit_b32
+from vit import VisionTransformer, create_vit_b32
 
 
 # ============================================================
@@ -56,11 +56,13 @@ class StyleProjectionHead(nn.Module):
     def __init__(
         self,
         input_dim: int = 512,
-        hidden_dims: List[int] = [384, 256],
+        hidden_dims: Optional[List[int]] = None,
         output_dim: int = 128,
         dropout: float = 0.1,
     ):
         super().__init__()
+        if hidden_dims is None:
+            hidden_dims = [384, 256]
 
         self.layers = nn.ModuleList()
         self.norms = nn.ModuleList()

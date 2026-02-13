@@ -18,11 +18,10 @@ Usage:
 """
 
 import os
-import sys
 import argparse
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -30,12 +29,9 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from models.style_encoder import ShotSenseEncoder
-from models.losses import ShotSenseLoss, compute_pseudo_labels
-from data.dataset import StyleTripletDataset, create_data_loaders
+from style_encoder import ShotSenseEncoder
+from losses import ShotSenseLoss, compute_pseudo_labels
+from dataset import StyleTripletDataset, create_data_loaders
 
 
 class ShotSenseTrainer:
@@ -146,9 +142,10 @@ class ShotSenseTrainer:
             self.optimizer.zero_grad()
             losses["total"].backward()
 
-            # Gradient clipping
+            # Gradient clipping — only on trainable parameters
             torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(), max_norm=1.0
+                [p for p in self.model.parameters() if p.requires_grad],
+                max_norm=1.0,
             )
 
             self.optimizer.step()
@@ -378,10 +375,6 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--save_interval", type=int, default=10)
 
     return parser.parse_args()
-
-
-# Allow importing Optional for type hints
-from typing import Optional
 
 
 if __name__ == "__main__":
