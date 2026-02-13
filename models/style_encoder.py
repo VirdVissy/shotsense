@@ -354,13 +354,14 @@ class ShotSenseEncoder(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Build a style prototype from reference images.
-        
+
         Args:
             reference_images: (N, 3, 224, 224) reference photos
         Returns:
             prototype: (128,) style prototype vector
             weights: (N,) attention weight per reference
         """
+        was_training = self.training
         self.eval()
 
         # Get style vectors for all references
@@ -372,6 +373,9 @@ class ShotSenseEncoder(nn.Module):
             style_vectors, return_weights=True
         )
 
+        if was_training:
+            self.train()
+
         return prototype, weights
 
     @torch.no_grad()
@@ -382,7 +386,7 @@ class ShotSenseEncoder(nn.Module):
     ) -> Dict[str, torch.Tensor]:
         """
         Score images against a style prototype.
-        
+
         Args:
             images: (B, 3, 224, 224) candidate photos
             prototype: (128,) style prototype vector
@@ -392,6 +396,7 @@ class ShotSenseEncoder(nn.Module):
                 'style_vectors': (B, 128)
                 'attributes': dict of attribute predictions
         """
+        was_training = self.training
         self.eval()
 
         result = self.forward(images)
@@ -402,6 +407,9 @@ class ShotSenseEncoder(nn.Module):
             style_vectors, prototype.unsqueeze(0), dim=-1
         )
         scores = ((scores + 1) / 2 * 100).clamp(0, 100)  # [-1,1] → [0,100]
+
+        if was_training:
+            self.train()
 
         return {
             "scores": scores,

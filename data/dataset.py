@@ -28,6 +28,7 @@ import random
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -78,6 +79,10 @@ class StyleTripletDataset(Dataset):
 
         # Image transforms
         self.transform = self._build_transforms(augment)
+        self.raw_transform = transforms.Compose([
+            transforms.Resize((self.image_size, self.image_size)),
+            transforms.ToTensor(),
+        ])
 
         print(f"Loaded {len(self.index)} images across {len(self.group_names)} style groups")
 
@@ -105,10 +110,9 @@ class StyleTripletDataset(Dataset):
 
     def _create_synthetic_data(self):
         """Create synthetic style groups for testing/demo purposes."""
-        # We create synthetic groups to allow testing without real data
-        # Each group gets a distinct "style" via color transform
         num_groups = 10
         images_per_group = 20
+        size = 256
 
         os.makedirs(self.data_root, exist_ok=True)
 
@@ -116,43 +120,31 @@ class StyleTripletDataset(Dataset):
             group_dir = self.data_root / f"style_{g:03d}"
             os.makedirs(group_dir, exist_ok=True)
 
+            # Each group has a distinct base hue
+            base = np.array([
+                128 + 80 * (g % 3 == 0),
+                128 + 80 * (g % 3 == 1),
+                128 + 80 * (g % 3 == 2),
+            ], dtype=np.float32)
+
             group_images = []
             for i in range(images_per_group):
                 img_path = group_dir / f"img_{i:04d}.jpg"
 
                 if not img_path.exists():
-                    # Create synthetic image with group-specific color shift
-                    img = Image.new("RGB", (256, 256))
-                    pixels = img.load()
-
-                    # Each group has a distinct base hue
-                    base_r = int(128 + 80 * (g % 3 == 0))
-                    base_g = int(128 + 80 * (g % 3 == 1))
-                    base_b = int(128 + 80 * (g % 3 == 2))
-
-                    for x in range(256):
-                        for y in range(256):
-                            # Add content variation within group
-                            noise_r = random.randint(-30, 30)
-                            noise_g = random.randint(-30, 30)
-                            noise_b = random.randint(-30, 30)
-
-                            # Add spatial pattern (different content per image)
-                            pattern = int(50 * ((x * (i + 1) + y) % 7) / 6)
-
-                            r = max(0, min(255, base_r + noise_r + pattern))
-                            g_val = max(0, min(255, base_g + noise_g + pattern))
-                            b_val = max(0, min(255, base_b + noise_b + pattern))
-
-                            pixels[x, y] = (r, g_val, b_val)
-
-                    img.save(img_path, quality=85)
+                    noise = np.random.randint(-30, 31, (size, size, 3), dtype=np.int16)
+                    xs = np.arange(size).reshape(size, 1)
+                    ys = np.arange(size).reshape(1, size)
+                    pattern = (50 * ((xs * (i + 1) + ys) % 7) // 6).astype(np.int16)
+                    pixels = base.astype(np.int16) + noise + pattern[..., None]
+                    pixels = np.clip(pixels, 0, 255).astype(np.uint8)
+                    Image.fromarray(pixels).save(img_path, quality=85)
 
                 group_images.append(img_path)
 
             self.style_groups[group_dir.name] = group_images
 
-        print(f"Created synthetic dataset: {num_groups} groups × {images_per_group} images")
+        print(f"Created synthetic dataset: {num_groups} groups x {images_per_group} images")
 
     def _build_transforms(self, augment: bool) -> transforms.Compose:
         """Build image preprocessing pipeline."""
@@ -215,11 +207,7 @@ class StyleTripletDataset(Dataset):
         negative_img = self._load_image(negative_path)
 
         # Unnormalized anchor for pseudo-label computation (reuse loaded image)
-        raw_transform = transforms.Compose([
-            transforms.Resize((self.image_size, self.image_size)),
-            transforms.ToTensor(),
-        ])
-        anchor_raw = raw_transform(anchor_pil)
+        anchor_raw = self.raw_transform(anchor_pil)
 
         return {
             "anchor": anchor_img,
@@ -270,7 +258,7 @@ def create_data_loaders(
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Create training and validation data loaders.
-    
+
     Args:
         data_root: path to style-grouped photo directory
         batch_size: batch size for training
@@ -279,23 +267,31 @@ def create_data_loaders(
     Returns:
         (train_loader, val_loader)
     """
-    full_dataset = StyleTripletDataset(data_root, augment=True)
+    # Build train dataset with augmentation, val dataset without
+    train_full = StyleTripletDataset(data_root, augment=True)
+    val_full = StyleTripletDataset(data_root, augment=False)
 
-    # Split into train/val
-    total = len(full_dataset)
+    # Split indices consistently
+    total = len(train_full)
     val_size = int(total * val_split)
     train_size = total - val_size
 
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, val_size]
+    generator = torch.Generator().manual_seed(42)
+    train_indices, val_indices = torch.utils.data.random_split(
+        range(total), [train_size, val_size], generator=generator,
     )
+
+    train_dataset = torch.utils.data.Subset(train_full, train_indices.indices)
+    val_dataset = torch.utils.data.Subset(val_full, val_indices.indices)
+
+    pin = torch.cuda.is_available()
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=pin,
         drop_last=True,
     )
 
@@ -304,7 +300,7 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=pin,
     )
 
     return train_loader, val_loader
