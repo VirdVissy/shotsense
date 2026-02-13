@@ -37,7 +37,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple
 
-from vit import VisionTransformer, create_vit_b32
+from models.vit import VisionTransformer, create_vit_b32
 
 
 # ============================================================

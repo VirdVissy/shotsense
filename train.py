@@ -29,9 +29,9 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from style_encoder import ShotSenseEncoder
-from losses import ShotSenseLoss, compute_pseudo_labels
-from dataset import StyleTripletDataset, create_data_loaders
+from models.style_encoder import ShotSenseEncoder
+from models.losses import ShotSenseLoss, compute_pseudo_labels
+from data.dataset import StyleTripletDataset, create_data_loaders
 
 
 class ShotSenseTrainer:
