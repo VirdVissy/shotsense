@@ -29,9 +29,9 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from style_encoder import ShotSenseEncoder
-from losses import compute_pseudo_labels
-from explainability import StyleGradCAM
+from models.style_encoder import ShotSenseEncoder
+from models.losses import compute_pseudo_labels
+from utils.explainability import StyleGradCAM
 
 
 # ============================================================

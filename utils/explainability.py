@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import numpy as np
 from typing import Dict, Optional, Tuple
 
-from style_encoder import ShotSenseEncoder
+from models.style_encoder import ShotSenseEncoder
 
 
 class StyleGradCAM:
