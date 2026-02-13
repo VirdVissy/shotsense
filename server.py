@@ -12,13 +12,12 @@ Endpoints:
     GET  /api/health                     — Health check
 """
 
-import os
-import sys
 import uuid
 import io
 import base64
 from pathlib import Path
 from typing import Dict, List, Optional
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 import torch
@@ -30,30 +29,14 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Add project root
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from models.style_encoder import ShotSenseEncoder
-from models.losses import compute_pseudo_labels
-from utils.explainability import StyleGradCAM
+from style_encoder import ShotSenseEncoder
+from losses import compute_pseudo_labels
+from explainability import StyleGradCAM
 
 
 # ============================================================
 # App Setup
 # ============================================================
-
-app = FastAPI(
-    title="ShotSense API",
-    description="AI-powered photo curation and style communication for creative teams",
-    version="1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Global state
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -78,11 +61,11 @@ raw_preprocess = transforms.Compose([
 
 
 # ============================================================
-# Startup
+# Lifespan
 # ============================================================
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global encoder, gradcam
     print("Loading ShotSense model...")
 
@@ -91,7 +74,7 @@ async def startup():
     # Load trained weights if available
     checkpoint_path = Path("./checkpoints/checkpoint_best.pt")
     if checkpoint_path.exists():
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
         encoder.load_state_dict(checkpoint["model_state_dict"])
         print("Loaded trained weights")
     else:
@@ -100,6 +83,22 @@ async def startup():
     encoder.eval()
     gradcam = StyleGradCAM(encoder)
     print(f"Model loaded on {device}")
+    yield
+
+
+app = FastAPI(
+    title="ShotSense API",
+    description="AI-powered photo curation and style communication for creative teams",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ============================================================
@@ -176,7 +175,7 @@ async def health():
 @app.post("/api/projects", response_model=ProjectResponse)
 async def create_project(project: ProjectCreate):
     """Create a new curation project."""
-    project_id = str(uuid.uuid4())[:8]
+    project_id = str(uuid.uuid4())
     projects[project_id] = {
         "id": project_id,
         "name": project.name,

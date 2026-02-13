@@ -201,22 +201,25 @@ class StyleTripletDataset(Dataset):
         positive_path = random.choice(positive_candidates)
 
         # Negative: different group
-        negative_group = anchor_group
-        while negative_group == anchor_group:
-            negative_group = random.choice(self.group_names)
+        other_groups = [g for g in self.group_names if g != anchor_group]
+        if not other_groups:
+            # Only one group exists — use a different image from the same group as fallback
+            other_groups = [anchor_group]
+        negative_group = random.choice(other_groups)
         negative_path = random.choice(self.style_groups[negative_group])
 
-        # Load and transform images
-        anchor_img = self._load_image(anchor_path)
+        # Load images — load anchor once, apply both transforms
+        anchor_pil = Image.open(anchor_path).convert("RGB")
+        anchor_img = self.transform(anchor_pil)
         positive_img = self._load_image(positive_path)
         negative_img = self._load_image(negative_path)
 
-        # Also return unnormalized anchor for pseudo-label computation
+        # Unnormalized anchor for pseudo-label computation (reuse loaded image)
         raw_transform = transforms.Compose([
             transforms.Resize((self.image_size, self.image_size)),
             transforms.ToTensor(),
         ])
-        anchor_raw = raw_transform(Image.open(anchor_path).convert("RGB"))
+        anchor_raw = raw_transform(anchor_pil)
 
         return {
             "anchor": anchor_img,

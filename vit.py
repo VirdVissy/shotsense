@@ -167,7 +167,7 @@ class MultiHeadSelfAttention(nn.Module):
         x = self.out_proj(x)
         x = self.proj_dropout(x)
 
-        return x, attn if return_attention else None
+        return x, (attn if return_attention else None)
 
 
 class TransformerBlock(nn.Module):
